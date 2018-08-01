@@ -2,6 +2,7 @@
 TODO:
 Add compatibility for Windows
 Figure out how to show x number of reddit posts
+Solve html parser compatibility for BeautifulSoup
 
 NOTES:
 - Selenium is only necessary for scraping the new reddit, since it is heavily-javascript driven,
@@ -11,18 +12,25 @@ NOTES:
 '''
 
 def astrowall():
-    import os
-    status, folder = gen_folder()
+    import sys
 
-    print("Scraping..." if status else "You already scraped today.")
+    to_scrape, folder = gen_folder()
 
-    if status:
-        anchors  = scrapity_scroopity()
-        os.exit(0)
-        print(anchors)
-        img_urls = filter_anchors(anchors)
+    if to_scrape:
+        print("Scraping...")
+        anchors = scrapity_scroopity()
+        print("Filtering anchors...")
+        ancs = filter_anchors(anchors)
+        print("Filtering image URLs...")
+        img_urls = get_img_links(ancs)
+        print(img_urls)
+        sys.exit(0)
+        print("Saving images...")
         save_imgs(img_urls)
+    else:
+        print("You already scraped today.")
 
+    sys.exit(0)
     print("Changing wallpaper...")
     set_wall(folder)
 
@@ -39,13 +47,15 @@ def gen_folder():
         os.makedirs(PIC_PATH)
 
     os.chdir(PIC_PATH)
-    status = True
+    to_scrape = False
 
-    if not os.path.isdir(dt.date.today().strftime("%d%m%Y")):
-        status = False
-    os.makedirs(new_folder)
+    new_folder = dt.date.today().strftime("%d%m%Y")
 
-    return status, new_folder
+    if not os.path.isdir(new_folder):
+        to_scrape = True
+        os.makedirs(new_folder)
+
+    return to_scrape, new_folder
 
 
 def scrapity_scroopity():
@@ -65,7 +75,7 @@ def scrapity_scroopity():
 
     vroom = webdriver.Chrome(chrome_options=chrome_options)
     vroom.get("https://old.reddit.com/r/spaceporn/top/?sort=top&t=week")
-    soup = BeautifulSoup(d.page_source)
+    soup = BeautifulSoup(vroom.page_source, features="html5lib")
 
     return soup.find_all('a', {'data-event-action': 'title', 'class': 'title may-blank outbound'})    
 
@@ -120,18 +130,19 @@ def get_img_links(anchors):
     img_pass = []
     for anc in anchors:
         response = get(anc['data-href-url'])
-    if "image" in response.headers['Content-Type']:
-        img_pass.append(response.headers['Content-Type'])
-    elif "imgur.com/" in anc['data-href-url']: # make a better check than this
-        # support more image hosting sites?                
-        # use selenium here
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        driver = webdriver.Chrome(chrome_options = chrome_options)
-        driver.get(anc['data-href-url'])
 
-        url = driver.find_element_by_css_selector('.image.post-image').find_element_by_tag_name('img').get_attribute('src')
-        img_pass.append(url)
+        if "image" in response.headers['Content-Type']:
+            img_pass.append(response.headers['Content-Type'])
+        elif "imgur.com/" in anc['data-href-url']: # make a better check than this
+            # support more image hosting sites?                
+            # use selenium here
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            driver = webdriver.Chrome(chrome_options = chrome_options)
+            driver.get(anc['data-href-url'])
+
+            url = driver.find_element_by_css_selector('.image.post-image').find_element_by_tag_name('img').get_attribute('src')
+            img_pass.append(url)
 
     return img_pass
 
@@ -142,8 +153,8 @@ def save_imgs(urls):
 
     for i, url in enumerate(urls, 1):
         response = requests.get(url, stream=True)
-    with open('img{}.png'.format(i), 'wb') as out_file:
-        shutil.copyfileobj(response.raw, out_file)
+        with open('img{}.png'.format(i), 'wb') as out_file:
+            shutil.copyfileobj(response.raw, out_file)
 
 
 def set_wall(folder):
