@@ -10,10 +10,22 @@ NOTES:
 - Selenium is used to scrape and BeautifulSoup used to parse
 - Headless Chrome driver is used to render html from javascript without actually opening up a browser window
 '''
+import sys
+import os
+import re
+import shutil
+import datetime as dt
+import subprocess as sp
+from urllib.parse import quote
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from bs4 import BeautifulSoup
+from requests import get
+from constants import PIC_PATH, DEFAULT, TOL
+from random import choice
 
 def astrowall():
-    import sys
-
     to_scrape, folder = gen_folder()
 
     if to_scrape:
@@ -23,15 +35,11 @@ def astrowall():
         ancs = filter_anchors(anchors)
         print("Filtering image URLs...")
         img_urls = get_img_links(ancs)
-        print(img_urls)
-        sys.exit(0)
         print("Saving images...")
-        save_imgs(img_urls)
+        save_imgs(img_urls, folder)
     else:
         print("You already scraped today.")
 
-    sys.exit(0)
-    print("Changing wallpaper...")
     set_wall(folder)
 
 
@@ -39,10 +47,6 @@ def gen_folder():
     '''
     Returns tuple of true if the folder of the week already exists and the folder name.
     '''
-    import datetime as dt
-    import os
-    from constants import PIC_PATH
-
     if not os.path.isdir(PIC_PATH):
         os.makedirs(PIC_PATH)
 
@@ -62,48 +66,29 @@ def scrapity_scroopity():
     '''
     Show me the query
     Return a list of anchor tags for each reddit post.
-
-    Notes:
-    https://www.analyticsvidhya.com/blog/2015/10/beginner-guide-web-scraping-beautiful-soup-python/
     '''
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from bs4 import BeautifulSoup
-
     chrome_options = Options()  
     chrome_options.add_argument("--headless")
 
     vroom = webdriver.Chrome(chrome_options=chrome_options)
     vroom.get("https://old.reddit.com/r/spaceporn/top/?sort=top&t=week")
     soup = BeautifulSoup(vroom.page_source, features="html5lib")
+    res = soup.find_all('a', {'data-event-action': 'title', 'class': 'title may-blank outbound'})    
 
-    return soup.find_all('a', {'data-event-action': 'title', 'class': 'title may-blank outbound'})    
+    return res
 
 
 def filter_anchors(anchors):
     '''
     Parse the given list of anchor tags and return a list of anchors satisfying the aspect ratio.
 
-    Example accepted format for urls:
-    <a 
-    class="title may-blank outbound"
-    data-event-action="title"
-    data-href-url="https://cdn.eso.org/images/large/eso0905a.jpg"
-    data-outbound-expiration="1533102938000"
-    data-outbound-url="https://out.reddit.com/t3_9275r8?url=https%3A%2F%2Fcdn.eso.org%2Fimages%2Flarge%2Feso0905a.jpg&amp;token=AQAAWkthW-Ra4RKuGOx6IaqdaZiZUMjz6Kn_8Urgsdp-m5Sfo6cF&amp;app_name=reddit.com" 
-    href="https://cdn.eso.org/images/large/eso0905a.jpg" 
-    rel="" tabindex="1">The Carina Nebula [8408 x 8337]
-    </a>
-
     Notes:
     https://askubuntu.com/questions/584688/how-can-i-get-the-monitor-resolution-using-the-command-line
     http://rubular.com/
     '''
-    import re
-    from constants import DEFAULT, TOL
-
     anc_pass = []
     for anc in anchors:
+        # check resolution
         res = re.search('\d{4}\s*[x]\s*\d{4}', str(anc))
         if res:
             # check aspect ratio of pic
@@ -122,20 +107,13 @@ def get_img_links(anchors):
 
     Using requests lib just to check header content because selenium is unable to do so.
     '''
-    from requests import get
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from bs4 import BeautifulSoup
-
     img_pass = []
     for anc in anchors:
         response = get(anc['data-href-url'])
 
-        if "image" in response.headers['Content-Type']:
-            img_pass.append(response.headers['Content-Type'])
-        elif "imgur.com/" in anc['data-href-url']: # make a better check than this
-            # support more image hosting sites?                
-            # use selenium here
+        if "image" in response.headers['Content-Type']: # already an image url
+            img_pass.append(anc['data-href-url'])
+        elif "imgur.com/" in anc['data-href-url']:      # link to imgur site
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             driver = webdriver.Chrome(chrome_options = chrome_options)
@@ -147,15 +125,16 @@ def get_img_links(anchors):
     return img_pass
 
 
-def save_imgs(urls):
-    import shutil
-    import requests
-
+def save_imgs(urls, folder):
     for i, url in enumerate(urls, 1):
-        response = requests.get(url, stream=True)
-        with open('img{}.png'.format(i), 'wb') as out_file:
+        response = get(url, stream=True)
+        f_name = response.url
+        if f_name[-1] == '/':
+            f_name = f_name[:-1]
+        print(f_name)
+        f_name = folder + '/' + f_name.replace('/', '=')
+        with open(f_name, 'wb') as out_file:
             shutil.copyfileobj(response.raw, out_file)
-
 
 def set_wall(folder):
     '''
@@ -164,18 +143,19 @@ def set_wall(folder):
     Notes:
     https://askubuntu.com/questions/66914/how-to-change-desktop-background-from-command-line-in-unity
     '''
-    import os
-    import subprocess as sp
-    from random import choice
-
     os.chdir(folder)
+    if os.listdir() == []:
+        print("There are no pictures to choose from {}".format(folder))
+        sys.exit(1)
     wall = choice(os.listdir())
+    wall = os.path.abspath(wall)
+    print('Changing wallpaper to {}.'.format(wall))
     try:
-        sp.check_output(['gsettings', 'set', 'org.gnome.desktop.background', 'picture-uri', 'file://{}'.format(wall)])
+        sp.check_output(['gsettings', 'set', 'org.gnome.desktop.background', 'picture-uri', '\'file://{}\''.format(wall)])
     except sp.CalledProcessError as e:
-        print("An error occured while trying to change your wallpaper.\n"
-                "Please ensure you have 'gsettings' installed.")
-
+        print(e)
+    except FileNotFoundError as e:
+        print(e)
 
 if __name__ == "__main__":
     astrowall()
