@@ -22,7 +22,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 from requests import get
-from constants import PIC_PATH, DEFAULT, TOL
+from constants import PIC_PATH, RESO, TOL
 from random import choice
 
 def astrowall():
@@ -86,18 +86,21 @@ def filter_anchors(anchors):
     https://askubuntu.com/questions/584688/how-can-i-get-the-monitor-resolution-using-the-command-line
     http://rubular.com/
     '''
-    anc_pass = []
-    for anc in anchors:
-        # check resolution
-        res = re.search('\d{4}\s*[x]\s*\d{4}', str(anc))
-        if res:
-            # check aspect ratio of pic
-            w = int(res.group()[:4])
-            h = int(res.group()[-4:])
-            if abs(DEFAULT - w / h) < TOL:
-                anc_pass.append(anc)
+    if RESO == 0:
+        return anchors
+    else:
+        anc_pass = []
+        for anc in anchors:
+            # check resolution
+            res = re.search('\d{4}\s*[x]\s*\d{4}', str(anc))
+            if res:
+                # check aspect ratio of pic
+                w = int(res.group()[:4])
+                h = int(res.group()[-4:])
+                if abs(RESO - w / h) < TOL:
+                    anc_pass.append(anc)
 
-    return anc_pass
+        return anc_pass
 
 
 def get_img_links(anchors):
