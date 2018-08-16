@@ -8,5 +8,5 @@ ASP_RATIO = {
         1.3: '4:3'
     }
 
-RESO = 0 # 16:9 the one true res, 0 to capture all images
+RESO = 1.7 # 16:9 the one true res, 0 to capture all images
 TOL = 0.2     # tolerance for difference in aspect ratio
